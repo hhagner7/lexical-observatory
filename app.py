@@ -4,24 +4,27 @@ import pandas as pd
 
 st.title("The Lexical Observatory")
 
-slots = ["noun_or", "verb_fy", "adj_id", "adj_ic", "adj_ible"]
+slots = ["noun_or", "verb_fy", "adj_id", "adj_ific", "adj_ic", "adj_ible"]
 
 families = {
-    "horror": ["horror", "horrify", "horrid", "horrific", "horrible"],
-    "stupor": ["stupor", "stupefy", "stupid", None,       None],
-    "tepor":  ["tepor",  "tepefy",  "tepid",  None,       None],
-    "terror": ["terror", "terrify", None,     "terrific", "terrible"]
+    "horror": ["horror", "horrify", "horrid", "horrific", None,      "horrible"],
+    "stupor": ["stupor", "stupefy", "stupid", None,       None,      None],
+    "tepor":  ["tepor",  "tepefy",  "tepid",  None,       None,      None],
+    "terror": ["terror", "terrify", None,     "terrific", None,      "terrible"]
 }
 
 st.subheader("1. Controls: Expand or Refine the Dataset")
 include_candor = st.checkbox("Add 'candor' family (candor, candid — no -fy verb)")
 include_sopor = st.checkbox("Add 'sopor' family (sopor, soporify, soporific — no -ible adj)")
-use_frequency = st.checkbox("Use 0/1/2 Frequency Scale (1 = rare 'tepor/tepefy/sopor/soporify', 2 = common)")
+include_calor = st.checkbox("Add 'calor' family (calor, calorify, calid, calorific, caloric — takes both -ific and -ic!)")
+use_frequency = st.checkbox("Use 0/1/2 Frequency Scale (1 = rare 'tepor/tepefy/sopor/soporify/calor/calorify/calid', 2 = common)")
 
 if include_candor:
-    families["candor"] = ["candor", None, "candid", None, None]
+    families["candor"] = ["candor", None, "candid", None, None, None]
 if include_sopor:
-    families["sopor"] = ["sopor", "soporify", None, "soporific", None]
+    families["sopor"] = ["sopor", "soporify", None, "soporific", None, None]
+if include_calor:
+    families["calor"] = ["calor", "calorify", "calid", "calorific", "caloric", None]
 
 df_words = pd.DataFrame.from_dict(families, orient="index", columns=slots)
 
@@ -38,6 +41,11 @@ if use_frequency:
         sopor_row = list(families.keys()).index("sopor")
         A[sopor_row, 0] = 1  # "sopor" is rare -> 1
         A[sopor_row, 1] = 1  # "soporify" is rare -> 1
+    if include_calor:
+        calor_row = list(families.keys()).index("calor")
+        A[calor_row, 0] = 1  # "calor" is rare -> 1
+        A[calor_row, 1] = 1  # "calorify" is rare -> 1
+        A[calor_row, 2] = 1  # "calid" is rare -> 1
 
 df_matrix = pd.DataFrame(A, index=families.keys(), columns=slots)
 
@@ -61,21 +69,30 @@ st.subheader("6. Similarity (A @ A.T) and Co-occurrence (A.T @ A)")
 
 family_names = list(families.keys())
 
-# Family-by-Family Similarity Matrix (rows dot-producted with rows)
+# Family-by-Family Similarity Matrix
 sim_matrix = A @ A.T
 df_sim = pd.DataFrame(sim_matrix, index=family_names, columns=family_names)
 st.write("**Family Similarity Matrix (A @ A.T):**")
 st.table(df_sim)
 
-# Slot-by-Slot Co-occurrence Matrix (columns dot-producted with columns)
-cooc_matrix = A.T @ A
-df_cooc = pd.DataFrame(cooc_matrix, index=slots, columns=slots)
-st.write("**Suffix Co-occurrence Matrix (A.T @ A):**")
-st.table(df_cooc)
-
-# Cosine Similarity Matrix (normalized by vector lengths)
+# Cosine Similarity Matrix
 row_lengths = np.sqrt(np.diag(sim_matrix)).reshape(-1, 1)
 cosine_sim = sim_matrix / (row_lengths @ row_lengths.T)
 df_cosine = pd.DataFrame(np.round(cosine_sim, 2), index=family_names, columns=family_names)
 st.write("**Normalized Family Similarity (Cosine Similarity):**")
 st.table(df_cosine)
+
+# Slot-by-Slot Co-occurrence Matrix (always uses binary presence 0/1)
+A_bin = (A > 0).astype(int)
+cooc_matrix = A_bin.T @ A_bin
+df_cooc = pd.DataFrame(cooc_matrix, index=slots, columns=slots)
+st.write("**Suffix Co-occurrence Matrix (A.T @ A):**")
+st.table(df_cooc)
+
+# Directional Implication Matrix P(Column | Row)
+slot_counts = np.diag(cooc_matrix).reshape(-1, 1)
+with np.errstate(divide="ignore", invalid="ignore"):
+    implication_matrix = np.where(slot_counts > 0, cooc_matrix / slot_counts, 0.0)
+df_imp = pd.DataFrame(np.round(implication_matrix, 2), index=slots, columns=slots)
+st.write("**Directional Implication Matrix — P(Column Suffix | Row Suffix):**")
+st.table(df_imp)
